@@ -1,0 +1,46 @@
+{
+  "name": "iptrust/sdk",
+  "description": "Official PHP SDK for the IP Trust API: IP geolocation, ASN, company, hosting, bot, VPN, proxy and Tor detection.",
+  "type": "library",
+  "keywords": [
+    "iptrust",
+    "ip",
+    "geolocation",
+    "asn",
+    "vpn",
+    "proxy",
+    "tor",
+    "bot detection",
+    "ip intelligence"
+  ],
+  "homepage": "https://iptrust.co",
+  "license": "MIT",
+  "support": {
+    "issues": "https://github.com/IP-Trust/iptrust-php/issues",
+    "source": "https://github.com/IP-Trust/iptrust-php",
+    "docs": "https://iptrust.co/docs"
+  },
+  "authors": [
+    {
+      "name": "IP Trust",
+      "homepage": "https://iptrust.co/"
+    }
+  ],
+  "require": {
+    "php": ">=7.2",
+    "ext-curl": "*",
+    "ext-json": "*"
+  },
+  "require-dev": {
+    "phpunit/phpunit": ">=8.5"
+  },
+  "autoload": {
+    "classmap": ["src/"]
+  },
+  "autoload-dev": {
+    "classmap": ["tests/"]
+  },
+  "scripts": {
+    "test": "phpunit"
+  }
+}
