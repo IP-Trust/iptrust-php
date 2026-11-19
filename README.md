@@ -61,6 +61,45 @@ The decoded body is also available as an associative array in `$r->raw`, for fie
 
 Full field reference: https://iptrust.co/docs
 
+## Batch IP lookup
+
+`lookupIps($ips)` calls `POST /ip/batch` with up to 25 addresses and returns an array of `IPResponse` objects keyed by each address exactly as you passed it. Every address counts as one request towards your quota.
+
+```php
+$ips = ["9.9.9.9", "2001:4860:4860::8888"];
+$results = $client->lookupIps($ips);
+foreach ($ips as $ip) {
+    echo $ip, " ", $results[$ip]->location->country ?? "unknown", "\n";
+}
+```
+
+The request succeeds or fails as a whole. If any address is invalid or appears twice, the call throws an `IPTrustException` with status 400 and no results.
+
+## ASN lookup
+
+`lookupAsn($asn)` calls `GET /asn/{asn}` with an AS number such as `"AS13335"` and returns an `ASNResponse`: the same `asn` object as an IP lookup (with an empty `route` and no `risk_types`), plus the AS's announced routes, the countries its addresses are in, and how many of its addresses have been detected as VPNs or proxies. Available on the Free, Identity and Complete packages.
+
+```php
+$r = $client->lookupAsn("AS13335");
+
+$r->asn->company;                 // "Cloudflare, Inc."
+$r->ipv4->total_ips;              // int
+foreach ($r->ipv4->routes as $route) {   // the 100 largest routes
+    echo $route->route, " ", $route->ips, "\n";
+}
+
+// IPv6 address counts do not fit in a PHP integer, so they are decimal strings.
+$r->ipv6->total_ips_str;          // e.g. "1526285772224943937874993086464"
+
+foreach ($r->countries as $c) {
+    echo $c->country, " ", $c->ipv4_ips, " ", $c->ipv4_routes, " ", $c->ipv6_ips_str, " ", $c->ipv6_routes, "\n";
+}
+$r->anonymization->detected_vpn_ips;
+$r->anonymization->detected_proxy_ips;
+```
+
+An unknown AS number throws an `IPTrustException` with status 404.
+
 ## Database downloads
 
 For plans that include database downloads.

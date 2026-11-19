@@ -89,7 +89,7 @@ class ASN
     public $company;
     /** @var string ISO 3166-1 alpha-2 country code where the AS is registered. */
     public $country;
-    /** @var string Most-specific BGP route prefix containing this IP. */
+    /** @var string Most-specific BGP route prefix containing this IP. Empty in an ASN lookup. */
     public $route;
     /** @var string Regional Internet Registry, e.g. "ARIN", "RIPE", "APNIC". */
     public $rir;

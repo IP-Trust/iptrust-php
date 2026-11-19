@@ -246,6 +246,164 @@ final class ClientTest extends TestCase
         $this->assertSame(1.0, $t->last()->connectTimeout);
     }
 
+    // -- lookupIps -----------------------------------------------------------
+
+    public function testLookupIpsPostsAddressesAndKeysResultsAsSent(): void
+    {
+        $body = '{"9.9.9.9": ' . Fixtures::SAMPLE_IP . ', "2001:DB8::1": {"ip": "2001:db8::1", "is_bogon": true}}';
+        $t = (new FakeTransport())->reply(new HttpResponse(200, $body));
+        $res = $this->makeClient($t)->lookupIps(["9.9.9.9", "2001:DB8::1"]);
+
+        $req = $t->last();
+        $this->assertSame("POST", $req->method);
+        $this->assertSame("https://api.iptrust.co/ip/batch", $req->url);
+        $this->assertSame("application/json", $req->headers["Content-Type"]);
+        $this->assertSame("test-key", $req->headers["X-API-Key"]);
+        $this->assertSame(["ips" => ["9.9.9.9", "2001:DB8::1"]], json_decode($req->body, true));
+
+        $this->assertSame(["9.9.9.9", "2001:DB8::1"], array_keys($res));
+        $this->assertSame("AS19281", $res["9.9.9.9"]->asn->number);
+        $this->assertSame("2001:db8::1", $res["2001:DB8::1"]->ip);
+        $this->assertTrue($res["2001:DB8::1"]->is_bogon);
+        $this->assertNull($res["2001:DB8::1"]->asn);
+    }
+
+    public function testLookupIpsSendsAListWhateverTheInputKeys(): void
+    {
+        $t = (new FakeTransport())->replyJson(["9.9.9.9" => ["ip" => "9.9.9.9", "is_bogon" => false]]);
+        $this->makeClient($t)->lookupIps(["first" => "9.9.9.9"]);
+        $this->assertSame('{"ips":["9.9.9.9"]}', $t->last()->body);
+    }
+
+    public function testLookupIpsRejectsEmptyWithoutRequest(): void
+    {
+        $t = new FakeTransport();
+        try {
+            $this->makeClient($t)->lookupIps([]);
+            $this->fail("expected exception");
+        } catch (InvalidArgumentException $e) {
+            $this->assertSame(0, $t->callCount());
+        }
+    }
+
+    public function testLookupIpsApiError(): void
+    {
+        $t = (new FakeTransport())->replyJson(
+            ["error" => ["error_code" => "bad_request", "detail" => 'invalid ip address: "nope"']],
+            400
+        );
+        try {
+            $this->makeClient($t)->lookupIps(["9.9.9.9", "nope"]);
+            $this->fail("expected exception");
+        } catch (IPTrustException $e) {
+            $this->assertSame(400, $e->status);
+            $this->assertSame(ErrorCodes::BAD_REQUEST, $e->errorCode);
+        }
+    }
+
+    // -- lookupAsn -----------------------------------------------------------
+
+    public function testLookupAsnParsesBody(): void
+    {
+        $t = (new FakeTransport())->reply(new HttpResponse(200, Fixtures::SAMPLE_ASN));
+        $res = $this->makeClient($t)->lookupAsn(" AS13335 ");
+
+        $req = $t->last();
+        $this->assertSame("GET", $req->method);
+        $this->assertSame("https://api.iptrust.co/asn/AS13335", $req->url);
+        $this->assertNull($req->body);
+
+        $this->assertSame("AS13335", $res->asn->number);
+        $this->assertSame("Cloudflare, Inc.", $res->asn->company);
+        $this->assertSame("hosting", $res->asn->type);
+        $this->assertSame(0.3, $res->asn->risk);
+        $this->assertSame("", $res->asn->route);
+        $this->assertNull($res->asn->risk_types);
+        $this->assertSame("2026-11-16T21:01:02+00:00", $res->updated_at->format("c"));
+
+        $this->assertSame(1559552, $res->ipv4->total_ips);
+        $this->assertSame(2736, $res->ipv4->total_routes);
+        $this->assertCount(1, $res->ipv4->routes);
+        $this->assertSame("152.114.0.0/17", $res->ipv4->routes[0]->route);
+        $this->assertSame(32768, $res->ipv4->routes[0]->ips);
+
+        $this->assertSame("1526285772224943937874993086464", $res->ipv6->total_ips_str);
+        $this->assertSame(3094, $res->ipv6->total_routes);
+        $this->assertSame("2a0a:6c80::/29", $res->ipv6->routes[0]->route);
+        $this->assertSame("633825300114114700748351602688", $res->ipv6->routes[0]->ips_str);
+
+        $this->assertCount(1, $res->countries);
+        $country = $res->countries[0];
+        $this->assertSame("US", $country->country);
+        $this->assertSame("United States", $country->country_name);
+        $this->assertSame(1108047, $country->ipv4_ips);
+        $this->assertSame(1460, $country->ipv4_routes);
+        $this->assertSame("588213278578840409395446153213", $country->ipv6_ips_str);
+        $this->assertSame(2566, $country->ipv6_routes);
+
+        $this->assertSame(111, $res->anonymization->detected_vpn_ips);
+        $this->assertSame(20711, $res->anonymization->detected_proxy_ips);
+        $this->assertSame("AS13335", $res->raw["asn"]["number"]);
+    }
+
+    public function testLookupAsnWithoutOptionalFields(): void
+    {
+        $t = (new FakeTransport())->replyJson([
+            "asn" => ["number" => "AS38803", "name" => "GTELECOM-AS-AP", "company" => "Gtelecom Pty Ltd", "country" => "AU", "rir" => "APNIC"],
+            "ipv4" => ["total_ips" => 4864, "total_routes" => 16, "routes" => []],
+            "ipv6" => ["total_ips_str" => "0", "total_routes" => 0, "routes" => []],
+            "countries" => [],
+            "anonymization" => ["detected_vpn_ips" => 0, "detected_proxy_ips" => 0],
+        ]);
+        $res = $this->makeClient($t)->lookupAsn("AS38803");
+
+        $this->assertNull($res->updated_at);
+        $this->assertNull($res->asn->risk);
+        $this->assertNull($res->asn->risk_label);
+        $this->assertNull($res->asn->type);
+        $this->assertSame("0", $res->ipv6->total_ips_str);
+        $this->assertSame([], $res->ipv6->routes);
+        $this->assertSame([], $res->countries);
+    }
+
+    public function testLookupAsnEncodesPathLikeInput(): void
+    {
+        $t = (new FakeTransport())->replyJson(["error" => ["error_code" => "bad_request"]], 400);
+        try {
+            $this->makeClient($t)->lookupAsn("../database");
+            $this->fail("expected exception");
+        } catch (IPTrustException $e) {
+            $this->assertSame(400, $e->status);
+        }
+        $this->assertSame("https://api.iptrust.co/asn/..%2Fdatabase", $t->last()->url);
+    }
+
+    public function testLookupAsnRejectsEmptyWithoutRequest(): void
+    {
+        $t = new FakeTransport();
+        try {
+            $this->makeClient($t)->lookupAsn("   ");
+            $this->fail("expected exception");
+        } catch (InvalidArgumentException $e) {
+            $this->assertSame(0, $t->callCount());
+        }
+    }
+
+    public function testLookupAsnNotFound(): void
+    {
+        $t = (new FakeTransport())->replyJson(
+            ["error" => ["error_code" => "not_found", "detail" => "asn not found"]],
+            404
+        );
+        try {
+            $this->makeClient($t)->lookupAsn("AS999999999");
+            $this->fail("expected exception");
+        } catch (IPTrustException $e) {
+            $this->assertSame(404, $e->status);
+            $this->assertSame(ErrorCodes::NOT_FOUND, $e->errorCode);
+        }
+    }
+
     // -- databases -----------------------------------------------------------
 
     public function testListDatabases(): void

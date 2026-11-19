@@ -102,6 +102,53 @@ class Client
     }
 
     /**
+     * Look up intelligence for up to 25 IPv4 or IPv6 addresses in one request. The result is keyed by each address exactly
+     * as it was passed in. Every address counts as one request towards your
+     * quota.
+     *
+     * The request succeeds or fails as a whole.
+     *
+     * @param string[] $ips
+     * @return array<string, IPResponse>
+     * @throws IPTrustException 400 if any address is invalid or appears more
+     * than once, plus the same errors as `lookupIp()`.
+     * @throws InvalidArgumentException if `$ips` is empty.
+     */
+    public function lookupIps(array $ips): array
+    {
+        if (count($ips) === 0) {
+            throw new InvalidArgumentException("At least one IP address is required.");
+        }
+        $data = $this->request("POST", "/ip/batch", ["ips" => array_values(array_map("strval", $ips))]);
+        $out = [];
+        foreach ($data as $ip => $result) {
+            if (is_array($result)) {
+                $out[(string) $ip] = IPResponse::fromArray($result);
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Look up an autonomous system by its number, e.g. "AS13335". Returns
+     * its owner, announced routes, the countries its addresses are located
+     * in, and how many of its addresses have been detected as VPNs or proxies.
+     *
+     * @throws IPTrustException 400 malformed AS number, 403 plan does not
+     * include ASN data, 404 unknown AS.
+     * @throws InvalidArgumentException if `$asn` is empty.
+     */
+    public function lookupAsn(string $asn): ASNResponse
+    {
+        $asn = trim($asn);
+        if ($asn === "") {
+            throw new InvalidArgumentException("An AS number is required.");
+        }
+        $data = $this->request("GET", "/asn/" . rawurlencode($asn));
+        return ASNResponse::fromArray($data);
+    }
+
+    /**
      * List the databases available for download, including ones your plan
      * does not include (see `Database::$entitled`).
      *
