@@ -23,7 +23,7 @@ use InvalidArgumentException;
 class Client
 {
     /** SDK version, sent in the User-Agent header. */
-    const VERSION = "0.1.0";
+    const VERSION = "0.2.0";
 
     /** Production API endpoint. */
     const DEFAULT_BASE_URL = "https://api.iptrust.co";
